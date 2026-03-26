@@ -63,6 +63,17 @@ function createInstallmentKey(row: VendaFranklinRow): string | null {
   ].join('|')
 }
 
+function createProductLabel(row: VendaFranklinRow): string {
+  const productCode = normalizeText(row.codigo_produto, '')
+  const productName = normalizeText(row.produto, '')
+
+  if (productCode && productName) {
+    return `${productCode} - ${productName}`
+  }
+
+  return productCode || productName
+}
+
 function createEmptySale(row: VendaFranklinRow, key: string): MutableSale {
   return {
     key,
@@ -132,10 +143,10 @@ function aggregateSales(rows: VendaFranklinRow[]): VendaFranklinSaleSummary[] {
     existingSale.valorFinanciado = Math.max(existingSale.valorFinanciado, toNumber(row.valor_financiado))
     existingSale.valorAcrescimos = Math.max(existingSale.valorAcrescimos, toNumber(row.valor_acrescimos_venda))
 
-    const productName = normalizeText(row.produto, '')
+    const productLabel = createProductLabel(row)
 
-    if (productName) {
-      existingSale.productSet.add(productName)
+    if (productLabel) {
+      existingSale.productSet.add(productLabel)
     }
 
     const installmentKey = createInstallmentKey(row)
@@ -271,23 +282,27 @@ function createPeriodBreakdown(sales: VendaFranklinSaleSummary[], selectedYear: 
     }))
 }
 
+function matchesSelectedPaymentMethods(sale: VendaFranklinSaleSummary, selectedPaymentMethods: string[]): boolean {
+  return selectedPaymentMethods.length === 0 || selectedPaymentMethods.includes(sale.formaPagamentoVenda)
+}
+
 function matchesFilters(sale: VendaFranklinSaleSummary, filters: DashboardFilterState): boolean {
   const saleYear = getYearFromDate(sale.dataVenda)
 
   return (filters.ano === 'todos' || saleYear === filters.ano)
-    && (filters.formaPagamento === 'todas' || sale.formaPagamentoVenda === filters.formaPagamento)
+    && matchesSelectedPaymentMethods(sale, filters.formaPagamento)
     && (filters.status === 'todos' || sale.statusPagamento === filters.status)
 }
 
 function matchesComparisonFilters(sale: VendaFranklinSaleSummary, filters: DashboardFilterState): boolean {
-  return (filters.formaPagamento === 'todas' || sale.formaPagamentoVenda === filters.formaPagamento)
+  return matchesSelectedPaymentMethods(sale, filters.formaPagamento)
     && (filters.status === 'todos' || sale.statusPagamento === filters.status)
 }
 
 export function useVendaFranklinDashboard(rows: Ref<VendaFranklinRow[] | null | undefined>) {
   const filters = reactive<DashboardFilterState>({
     ano: 'todos',
-    formaPagamento: 'todas',
+    formaPagamento: [],
     status: 'todos',
   })
 
@@ -330,12 +345,12 @@ export function useVendaFranklinDashboard(rows: Ref<VendaFranklinRow[] | null | 
     : `Distribuição mensal das compras dentro de ${filters.ano}.`)
 
   const hasActiveFilters = computed(() => filters.ano !== 'todos'
-    || filters.formaPagamento !== 'todas'
+    || filters.formaPagamento.length > 0
     || filters.status !== 'todos')
 
   function clearFilters() {
     filters.ano = 'todos'
-    filters.formaPagamento = 'todas'
+    filters.formaPagamento = []
     filters.status = 'todos'
   }
 

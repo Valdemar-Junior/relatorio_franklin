@@ -7,7 +7,7 @@ export type DashboardStatus =
 
 export interface DashboardFilterState {
   ano: string
-  formaPagamento: string
+  formaPagamento: string[]
   status: DashboardStatus | 'todos'
 }
 

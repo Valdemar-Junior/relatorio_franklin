@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useAsyncData, useHead } from '#imports'
+import { useAsyncData, useHead, useState } from '#imports'
 import { computed } from 'vue'
 
 import DashboardBreakdownPanel from '~/components/dashboard/DashboardBreakdownPanel.vue'
@@ -13,6 +13,8 @@ import { formatCurrencyBRL, formatDateBR } from '~/utils/formatters'
 useHead({
   title: 'Dashboard financeiro | Franklin',
 })
+
+const printGeneratedAt = useState('dashboard-print-generated-at', () => new Date().toISOString())
 
 const { fetchTodasAsVendas } = useVendaFranklin()
 
@@ -96,8 +98,10 @@ const filterContext = computed(() => {
     labels.push(`Ano ${filters.ano}`)
   }
 
-  if (filters.formaPagamento !== 'todas') {
-    labels.push(filters.formaPagamento)
+  if (filters.formaPagamento.length) {
+    labels.push(filters.formaPagamento.length <= 2
+      ? filters.formaPagamento.join(' e ')
+      : `${filters.formaPagamento.length} formas de pagamento`)
   }
 
   if (filters.status !== 'todos') {
@@ -117,12 +121,22 @@ const overviewChips = computed(() => [
 const emptyMessage = computed(() => hasActiveFilters.value
   ? 'Nenhuma compra encontrada para os filtros aplicados.'
   : 'Nenhum dado disponível para montar o dashboard.')
+const printGeneratedAtLabel = computed(() => new Intl.DateTimeFormat('pt-BR', {
+  dateStyle: 'short',
+  timeStyle: 'short',
+}).format(new Date(printGeneratedAt.value)))
+
+function printReport(): void {
+  if (import.meta.client) {
+    window.print()
+  }
+}
 </script>
 
 <template>
-  <main class="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#eef6f3_45%,#f8fafc_100%)] text-slate-950">
-    <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <section class="relative overflow-hidden rounded-[2rem] border border-slate-200/70 bg-slate-950 px-6 py-8 text-white shadow-[0_40px_100px_-55px_rgba(15,23,42,0.9)] sm:px-8">
+  <main class="dashboard-page min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#eef6f3_45%,#f8fafc_100%)] text-slate-950">
+    <div class="dashboard-page__content mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <section class="dashboard-page__screen-only relative overflow-hidden rounded-[2rem] border border-slate-200/70 bg-slate-950 px-6 py-8 text-white shadow-[0_40px_100px_-55px_rgba(15,23,42,0.9)] sm:px-8">
         <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.35),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.22),transparent_28%)]" />
 
         <div class="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
@@ -197,19 +211,21 @@ const emptyMessage = computed(() => hasActiveFilters.value
           :payment-methods="availablePaymentMethods"
           :statuses="availableStatuses"
           :selected-year="filters.ano"
-          :selected-payment-method="filters.formaPagamento"
+          :selected-payment-methods="filters.formaPagamento"
           :selected-status="filters.status"
           :filtered-count="filteredSales.length"
           :has-active-filters="hasActiveFilters"
+          :can-print="filteredSales.length > 0"
           @update:selected-year="filters.ano = $event"
-          @update:selected-payment-method="filters.formaPagamento = $event"
+          @update:selected-payment-methods="filters.formaPagamento = $event"
           @update:selected-status="filters.status = $event"
           @reset="clearFilters"
+          @print="printReport"
         />
 
         <div
           v-if="requestStatus === 'pending'"
-          class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+          class="dashboard-page__screen-only mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4"
         >
           <div
             v-for="placeholder in 4"
@@ -222,7 +238,7 @@ const emptyMessage = computed(() => hasActiveFilters.value
           v-else-if="filteredSales.length"
           class="mt-6 space-y-6"
         >
-          <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section class="dashboard-page__screen-only grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <DashboardMetricCard
               v-for="card in metricCards"
               :key="card.label"
@@ -233,7 +249,7 @@ const emptyMessage = computed(() => hasActiveFilters.value
             />
           </section>
 
-          <section class="grid gap-6 xl:grid-cols-[1.2fr_1fr]">
+          <section class="dashboard-page__screen-only grid gap-6 xl:grid-cols-[1.2fr_1fr]">
             <DashboardBreakdownPanel
               :title="periodTitle"
               :description="periodDescription"
@@ -249,7 +265,35 @@ const emptyMessage = computed(() => hasActiveFilters.value
             />
           </section>
 
-          <DashboardSalesTable :sales="filteredSales" />
+          <section class="dashboard-page__print-header">
+            <p class="dashboard-page__print-kicker">
+              Compras consolidadas
+            </p>
+
+            <div class="dashboard-page__print-title-row">
+              <div>
+                <h1 class="dashboard-page__print-title">
+                  Historico financeiro por lancamento
+                </h1>
+
+                <p class="dashboard-page__print-subtitle">
+                  {{ clientName }}
+                </p>
+              </div>
+
+              <div class="dashboard-page__print-generated-at">
+                Gerado em {{ printGeneratedAtLabel }}
+              </div>
+            </div>
+
+            <div class="dashboard-page__print-meta">
+              <span>{{ filterContext }}</span>
+              <span>Base {{ baseRangeLabel }}</span>
+              <span>{{ filteredSales.length }} compras</span>
+            </div>
+          </section>
+
+          <DashboardSalesTable class="dashboard-page__report" :sales="filteredSales" />
         </div>
 
         <section
@@ -268,3 +312,84 @@ const emptyMessage = computed(() => hasActiveFilters.value
     </div>
   </main>
 </template>
+
+<style>
+.dashboard-page__print-header {
+  display: none;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  .dashboard-page {
+    min-height: auto !important;
+    background: #fff !important;
+  }
+
+  .dashboard-page__content {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .dashboard-page__screen-only {
+    display: none !important;
+  }
+
+  .dashboard-page__print-header {
+    display: none !important;
+  }
+
+  .dashboard-page__print-kicker {
+    margin: 0;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #64748b;
+  }
+
+  .dashboard-page__print-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 4mm;
+    margin-top: 2mm;
+  }
+
+  .dashboard-page__print-title {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.15;
+    color: #0f172a;
+  }
+
+  .dashboard-page__print-subtitle,
+  .dashboard-page__print-generated-at {
+    margin: 1.5mm 0 0;
+    font-size: 9px;
+    line-height: 1.25;
+    color: #475569;
+  }
+
+  .dashboard-page__print-generated-at {
+    white-space: nowrap;
+  }
+
+  .dashboard-page__print-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2mm 4mm;
+    margin-top: 3mm;
+    font-size: 8.5px;
+    line-height: 1.25;
+    color: #334155;
+  }
+
+  .dashboard-page__report {
+    margin-top: 0 !important;
+  }
+}
+</style>
